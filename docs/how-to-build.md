@@ -248,7 +248,7 @@ sudo apt install python3.11
 python3.11 --version
 ```
 
-These commands add a repository that provides the latest Python versions and installs Python 3.11.
+These commands add a repository that provides the latest Python versions and install Python 3.11.
 
 ### Download Apache Gravitino project to WSL
 
