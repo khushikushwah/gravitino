@@ -36,6 +36,8 @@ dependencies {
     exclude(group = "*")
   }
 
+  compileOnly(libs.guava)
+
   implementation(libs.hadoop3.common) {
     exclude("com.sun.jersey")
     exclude("javax.servlet", "servlet-api")
@@ -79,6 +81,7 @@ dependencies {
   testImplementation(libs.mockito.core)
   testImplementation(libs.mockito.inline)
   testImplementation(libs.mysql.driver)
+  testImplementation(libs.postgresql.driver)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.testcontainers)
@@ -148,16 +151,10 @@ tasks.test {
     }
   }
 
-  val skipUTs = project.hasProperty("skipTests")
-  if (skipUTs) {
-    // Only run integration tests
-    include("**/integration/**")
-  }
-
   val skipITs = project.hasProperty("skipITs")
   if (skipITs) {
     // Exclude integration tests
-    exclude("**/integration/**")
+    exclude("**/integration/test/**")
   } else {
     dependsOn(tasks.jar)
   }
