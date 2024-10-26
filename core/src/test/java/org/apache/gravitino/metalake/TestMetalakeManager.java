@@ -28,11 +28,14 @@ import org.apache.gravitino.EntityStore;
 import org.apache.gravitino.MetalakeChange;
 import org.apache.gravitino.NameIdentifier;
 import org.apache.gravitino.StringIdentifier;
+import org.apache.gravitino.UserPrincipal;
+import org.apache.gravitino.auth.AuthConstants;
 import org.apache.gravitino.exceptions.MetalakeAlreadyExistsException;
 import org.apache.gravitino.exceptions.NoSuchMetalakeException;
 import org.apache.gravitino.meta.BaseMetalake;
 import org.apache.gravitino.storage.RandomIdGenerator;
 import org.apache.gravitino.storage.memory.TestMemoryEntityStore;
+import org.apache.gravitino.utils.PrincipalUtils;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
@@ -87,8 +90,10 @@ public class TestMetalakeManager {
     NameIdentifier ident2 = NameIdentifier.of("test12");
     Map<String, String> props = ImmutableMap.of("key1", "value1");
 
-    BaseMetalake metalake1 = metalakeManager.createMetalake(ident1, "comment", props);
-    BaseMetalake metalake2 = metalakeManager.createMetalake(ident2, "comment", props);
+    metalakeManager.createMetalake(ident1, "comment", props);
+    BaseMetalake metalake1 = metalakeManager.loadMetalake(ident1);
+    metalakeManager.createMetalake(ident2, "comment", props);
+    BaseMetalake metalake2 = metalakeManager.loadMetalake(ident2);
 
     Set<BaseMetalake> metalakes = Sets.newHashSet(metalakeManager.listMetalakes());
     Assertions.assertTrue(metalakes.contains(metalake1));
@@ -119,7 +124,7 @@ public class TestMetalakeManager {
   }
 
   @Test
-  public void testAlterMetalake() {
+  public void testAlterMetalake() throws Exception {
     NameIdentifier ident = NameIdentifier.of("test31");
     Map<String, String> props = ImmutableMap.of("key1", "value1");
 
@@ -161,6 +166,14 @@ public class TestMetalakeManager {
         Assertions.assertThrows(
             NoSuchMetalakeException.class, () -> metalakeManager.alterMetalake(id, change));
     Assertions.assertTrue(exception.getMessage().contains("Metalake test3 does not exist"));
+
+    // Test the audit info
+    UserPrincipal userPrincipal = new UserPrincipal("test");
+    MetalakeChange change5 = MetalakeChange.setProperty("key5", "value5");
+    alteredMetalake =
+        PrincipalUtils.doAs(userPrincipal, () -> metalakeManager.alterMetalake(ident1, change5));
+    Assertions.assertEquals(userPrincipal.getName(), alteredMetalake.auditInfo().lastModifier());
+    Assertions.assertEquals(AuthConstants.ANONYMOUS_USER, alteredMetalake.auditInfo().creator());
   }
 
   @Test
@@ -173,6 +186,7 @@ public class TestMetalakeManager {
     Assertions.assertEquals("comment", metalake.comment());
     testProperties(props, metalake.properties());
 
+    metalakeManager.disableMetalake(ident);
     boolean dropped = metalakeManager.dropMetalake(ident);
     Assertions.assertTrue(dropped, "metalake should be dropped");
 

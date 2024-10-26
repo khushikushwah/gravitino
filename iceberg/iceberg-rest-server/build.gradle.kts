@@ -34,14 +34,22 @@ dependencies {
   implementation(project(":api"))
   implementation(project(":catalogs:catalog-common"))
   implementation(project(":clients:client-java"))
-  implementation(project(":core"))
-  implementation(project(":common"))
+  implementation(project(":core")) {
+    exclude("*")
+  }
+  implementation(project(":common")) {
+    exclude("*")
+  }
   implementation(project(":iceberg:iceberg-common"))
-  implementation(project(":server-common"))
+  implementation(project(":server-common")) {
+    exclude("*")
+  }
   implementation(libs.bundles.iceberg)
   implementation(libs.bundles.jetty)
   implementation(libs.bundles.jersey)
   implementation(libs.bundles.log4j)
+  implementation(libs.bundles.metrics)
+  implementation(libs.bundles.prometheus)
   implementation(libs.caffeine)
   implementation(libs.commons.lang3)
   implementation(libs.guava)
@@ -55,6 +63,7 @@ dependencies {
 
   compileOnly(libs.lombok)
 
+  testImplementation(project(":bundles:gcp-bundle", configuration = "shadow"))
   testImplementation(project(":integration-test-common", "testArtifacts"))
 
   testImplementation("org.scala-lang.modules:scala-collection-compat_$scalaVersion:$scalaCollectionCompatVersion")
@@ -67,6 +76,7 @@ dependencies {
     exclude("org.rocksdb")
   }
 
+  testImplementation(libs.iceberg.gcp.bundle)
   testImplementation(libs.jersey.test.framework.core) {
     exclude(group = "org.junit.jupiter")
   }
@@ -150,16 +160,10 @@ tasks {
 }
 
 tasks.test {
-  val skipUTs = project.hasProperty("skipTests")
-  if (skipUTs) {
-    // Only run integration tests
-    include("**/integration/**")
-  }
-
   val skipITs = project.hasProperty("skipITs")
   if (skipITs) {
     // Exclude integration tests
-    exclude("**/integration/**")
+    exclude("**/integration/test/**")
   } else {
     dependsOn(tasks.jar)
   }

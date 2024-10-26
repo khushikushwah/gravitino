@@ -24,11 +24,12 @@ For more details, please refer to the related doc.
 - [**Apache Doris**](./jdbc-doris-catalog.md)
 - [**Apache Iceberg**](./lakehouse-iceberg-catalog.md)
 - [**Apache Paimon**](./lakehouse-paimon-catalog.md)
+- [**Apache Hudi**](./lakehouse-hudi-catalog.md)
 
 Assuming:
 
  - Gravitino has just started, and the host and port is [http://localhost:8090](http://localhost:8090).
- - Metalake has been created.
+ - A metalake has been created and [enabled](./manage-metalake-using-gravitino.md#enable-a-metalake).
 
 ## Catalog operations
 
@@ -84,18 +85,32 @@ Catalog catalog = gravitinoClient.createCatalog("catalog",
 ```
 
 </TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# Assuming you have just created a metalake named `metalake`
+gravitino_client = GravitinoClient(uri="http://localhost:8090", metalake_name="metalake")
+gravitino_client.create_catalog(name="catalog",
+                                catalog_type=CatalogType.RELATIONAL,
+                                provider="hive",
+                                comment="This is a hive catalog",
+                                properties={"metastore.uris": "thrift://localhost:9083"})
+```
+
+</TabItem>
 </Tabs>
 
 Currently, Gravitino supports the following catalog providers:
 
-| Catalog provider    | Catalog property                                                                |
-|---------------------|---------------------------------------------------------------------------------|
-| `hive`              | [Hive catalog property](./apache-hive-catalog.md#catalog-properties)            |
-| `lakehouse-iceberg` | [Iceberg catalog property](./lakehouse-iceberg-catalog.md#catalog-properties)   |
-| `lakehouse-paimon`  | [Paimon catalog property](./lakehouse-paimon-catalog.md#catalog-properties)     |
-| `jdbc-mysql`        | [MySQL catalog property](./jdbc-mysql-catalog.md#catalog-properties)            |
-| `jdbc-postgresql`   | [PostgreSQL catalog property](./jdbc-postgresql-catalog.md#catalog-properties)  |
-| `jdbc-doris`        | [Doris catalog property](./jdbc-doris-catalog.md#catalog-properties)            |
+| Catalog provider    | Catalog property                                                               |
+|---------------------|--------------------------------------------------------------------------------|
+| `hive`              | [Hive catalog property](./apache-hive-catalog.md#catalog-properties)           |
+| `lakehouse-iceberg` | [Iceberg catalog property](./lakehouse-iceberg-catalog.md#catalog-properties)  |
+| `lakehouse-paimon`  | [Paimon catalog property](./lakehouse-paimon-catalog.md#catalog-properties)    |
+| `lakehouse-hudi`    | [Hudi catalog property](./lakehouse-hudi-catalog.md#catalog-properties)        |
+| `jdbc-mysql`        | [MySQL catalog property](./jdbc-mysql-catalog.md#catalog-properties)           |
+| `jdbc-postgresql`   | [PostgreSQL catalog property](./jdbc-postgresql-catalog.md#catalog-properties) |
+| `jdbc-doris`        | [Doris catalog property](./jdbc-doris-catalog.md#catalog-properties)           |
 
 ### Load a catalog
 
@@ -117,6 +132,15 @@ curl -X GET -H "Accept: application/vnd.gravitino.v1+json" \
 // Assuming you have created a metalake named `metalake` and a catalog named `catalog`
 Catalog catalog = gravitinoClient.loadCatalog("catalog");
 // ...
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+catalog = gravitino_client.load_catalog("catalog")
 ```
 
 </TabItem>
@@ -158,16 +182,27 @@ Catalog catalog = gravitinoClient.alterCatalog("catalog",
 ```
 
 </TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+changes = (CatalogChange.update_comment("new comment"))
+catalog = gravitino_client.alterCatalog("catalog", *changes)
+# ...
+```
+
+</TabItem>
 </Tabs>
 
 Currently, Gravitino supports the following changes to a catalog:
 
-| Supported modification | JSON                                                         | Java                                           |
-|------------------------|--------------------------------------------------------------|------------------------------------------------|
-| Rename metalake        | `{"@type":"rename","newName":"metalake_renamed"}`            | `CatalogChange.rename("catalog_renamed")`      |
-| Update comment         | `{"@type":"updateComment","newComment":"new_comment"}`       | `CatalogChange.updateComment("new_comment")`   |
-| Set a property         | `{"@type":"setProperty","property":"key1","value":"value1"}` | `CatalogChange.setProperty("key1", "value1")`  |
-| Remove a property      | `{"@type":"removeProperty","property":"key1"}`               | `CatalogChange.removeProperty("key1")`         |
+| Supported modification | JSON                                                         | Java                                          |
+|------------------------|--------------------------------------------------------------|-----------------------------------------------|
+| Rename catalog         | `{"@type":"rename","newName":"catalog_renamed"}`             | `CatalogChange.rename("catalog_renamed")`     |
+| Update comment         | `{"@type":"updateComment","newComment":"new_comment"}`       | `CatalogChange.updateComment("new_comment")`  |
+| Set a property         | `{"@type":"setProperty","property":"key1","value":"value1"}` | `CatalogChange.setProperty("key1", "value1")` |
+| Remove a property      | `{"@type":"removeProperty","property":"key1"}`               | `CatalogChange.removeProperty("key1")`        |
 
 :::warning
 
@@ -178,16 +213,19 @@ Therefore, do not change the catalog's URI unless you fully understand the conse
 
 :::
 
-### Drop a catalog
+### Enable a catalog
 
-You can remove a catalog by sending a `DELETE` request to the `/api/metalakes/{metalake_name}/catalogs/{catalog_name}` endpoint or just use the Gravitino Java client. The following is an example of dropping a catalog:
+Catalog has a reserved property - `in-use`, which indicates whether the catalog is available for use. By default, the `in-use` property is set to `true`.
+To enable a disabled catalog, you can send a `PATCH` request to the `/api/metalakes/{metalake_name}/catalogs/{catalog_name}` endpoint or use the Gravitino Java client.
 
-<Tabs groupId="language" queryString>
+The following is an example of enabling a catalog:
+
+<Tabs groupId='language' queryString>
 <TabItem value="shell" label="Shell">
 
 ```shell
-curl -X DELETE -H "Accept: application/vnd.gravitino.v1+json" \
--H "Content-Type: application/json" \
+curl -X PATCH -H "Accept: application/vnd.gravitino.v1+json" \
+-H "Content-Type: application/json" -d '{"in-use": true}' \
 http://localhost:8090/api/metalakes/metalake/catalogs/catalog
 ```
 
@@ -197,17 +235,122 @@ http://localhost:8090/api/metalakes/metalake/catalogs/catalog
 ```java
 // ...
 // Assuming you have created a metalake named `metalake` and a catalog named `catalog`
-gravitinoClient.dropCatalog("catalog");
+gravitinoClient.enableCatalog("catalog");
 // ...
+```
 
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+gravitino_client.enable_catalog("catalog")
+# ...
 ```
 
 </TabItem>
 </Tabs>
 
-:::note
-Dropping a catalog only removes metadata about the catalog, schemas, and tables under the catalog in Gravitino, It doesn't remove the real data (table and schema) in Apache Hive.
+:::info
+This operation does nothing if the catalog is already enabled.
 :::
+
+### Disable a catalog
+
+Once a catalog is disabled:
+- Users can only [list](#list-all-catalogs-in-a-metalake), [load](#load-a-catalog), [drop](#drop-a-catalog), or [enable](#enable-a-catalog) it.
+- Any other operation on the catalog or its sub-entities will result in an error.
+
+To disable a catalog, you can send a `PATCH` request to the `/api/metalakes/{metalake_name}/catalogs/{catalog_name}` endpoint or use the Gravitino Java client.
+
+The following is an example of disabling a catalog:
+
+<Tabs groupId='language' queryString>
+<TabItem value="shell" label="Shell">
+
+```shell
+curl -X PATCH -H "Accept: application/vnd.gravitino.v1+json" \
+-H "Content-Type: application/json" -d '{"in-use": false}' \
+http://localhost:8090/api/metalakes/metalake/catalogs/catalog
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// ...
+// Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+gravitinoClient.disableCatalog("catalog");
+// ...
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+gravitino_client.disable_catalog("catalog")
+# ...
+```
+
+</TabItem>
+</Tabs>
+
+:::info
+This operation does nothing if the catalog is already disabled.
+:::
+
+### Drop a catalog
+
+Deleting a catalog by "force" is not a default behavior, so please make sure:
+
+- There are no schemas under the catalog. Otherwise, you will get an error.
+- The catalog is [disabled](#disable-a-catalog). Otherwise, you will get an error.
+
+Deleting a catalog by "force" will:
+
+- Delete all sub-entities (schemas, tables, etc.) under the catalog.
+- Delete the catalog itself even if it is enabled.
+- Not delete the external resources (such as database, table, etc.) associated with sub-entities unless they are managed (such as managed fileset).
+
+You can remove a catalog by sending a `DELETE` request to the `/api/metalakes/{metalake_name}/catalogs/{catalog_name}` endpoint or just use the Gravitino Java client. The following is an example of dropping a catalog:
+
+<Tabs groupId="language" queryString>
+<TabItem value="shell" label="Shell">
+
+```shell
+curl -X DELETE -H "Accept: application/vnd.gravitino.v1+json" \
+-H "Content-Type: application/json" \
+http://localhost:8090/api/metalakes/metalake/catalogs/catalog?force=false
+```
+
+</TabItem>
+<TabItem value="java" label="Java">
+
+```java
+// ...
+// Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+// force can be true or false
+gravitinoClient.dropCatalog("catalog", false);
+// ...
+
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+# force can be true or false
+gravitino_client.drop_catalog(name="catalog", force=False)
+# ...
+```
+
+</TabItem>
+</Tabs>
 
 ### List all catalogs in a metalake
 
@@ -231,6 +374,16 @@ http://localhost:8090/api/metalakes/metalake/catalogs
 // Assuming you have just created a metalake named `metalake`
 String[] catalogNames = gravitinoClient.listCatalogs();
 // ...
+```
+
+</TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+catalog_names = gravitino_client.list_catalogs()
+# ...
 ```
 
 </TabItem>
@@ -260,13 +413,23 @@ Catalog[] catalogsInfos = gravitinoMetaLake.listCatalogsInfo();
 ```
 
 </TabItem>
+<TabItem value="python" label="Python">
+
+```python
+# ...
+# Assuming you have created a metalake named `metalake` and a catalog named `catalog`
+catalogs_info = gravitino_client.list_catalogs_info()
+# ...
+```
+
+</TabItem>
 </Tabs>
 
 
 ## Schema operations
 
 :::tip
-Users should create a metalake and a catalog before creating a schema.
+Users should create a metalake and a catalog, then ensure that the metalake and catalog are enabled before operating schemas.
 :::
 
 ### Create a schema
@@ -326,6 +489,7 @@ Currently, Gravitino supports the following schema property:
 | `hive`              | [Hive schema property](./apache-hive-catalog.md#schema-properties)           |
 | `lakehouse-iceberg` | [Iceberg scheme property](./lakehouse-iceberg-catalog.md#schema-properties)  |
 | `lakehouse-paimon`  | [Paimon scheme property](./lakehouse-paimon-catalog.md#schema-properties)    |
+| `lakehouse-hudi`    | [Hudi scheme property](./lakehouse-hudi-catalog.md#schema-properties)        |
 | `jdbc-mysql`        | [MySQL schema property](./jdbc-mysql-catalog.md#schema-properties)           |
 | `jdbc-postgresql`   | [PostgreSQL schema property](./jdbc-postgresql-catalog.md#schema-properties) |
 | `jdbc-doris`        | [Doris schema property](./jdbc-doris-catalog.md#schema-properties)           |
@@ -515,7 +679,7 @@ schema_list: List[NameIdentifier] = catalog.as_schemas().list_schemas()
 ## Table operations
 
 :::tip
-Users should create a metalake, a catalog and a schema before creating a table.
+Users should create a metalake, a catalog and a schema, then ensure that the metalake and catalog are enabled before before operating tables.
 :::
 
 ### Create a table
@@ -710,13 +874,13 @@ The following types that Gravitino supports:
 |---------------------------|--------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Boolean                   | `Types.BooleanType.get()`                                                | `boolean`                                                                                                                            | Boolean type                                                                                                                                                               |
 | Byte                      | `Types.ByteType.get()`                                                   | `byte`                                                                                                                               | Byte type, indicates a numerical value of 1 byte                                                                                                                           |
-| Byte(false)               | `Types.ByteType.unsigned()`                                              | `byte unsigned`                                                                                                                      | Unsigned Byte type, indicates a unsigned numerical value of 1 byte                                                                                                         |
+| Unsigned Byte             | `Types.ByteType.unsigned()`                                              | `byte unsigned`                                                                                                                      | Unsigned Byte type, indicates a unsigned numerical value of 1 byte                                                                                                         |
 | Short                     | `Types.ShortType.get()`                                                  | `short`                                                                                                                              | Short type, indicates a numerical value of 2 bytes                                                                                                                         |
-| Short(false)              | `Types.ShortType.unsigned()`                                             | `short unsigned`                                                                                                                     | Unsigned Short type, indicates a unsigned numerical value of 2 bytes                                                                                                       |
+| Unsigned Short            | `Types.ShortType.unsigned()`                                             | `short unsigned`                                                                                                                     | Unsigned Short type, indicates a unsigned numerical value of 2 bytes                                                                                                       |
 | Integer                   | `Types.IntegerType.get()`                                                | `integer`                                                                                                                            | Integer type, indicates a numerical value of 4 bytes                                                                                                                       |
-| Integer(false)            | `Types.IntegerType.unsigned()`                                           | `integer unsigned`                                                                                                                   | Unsigned Integer type, indicates a unsigned numerical value of 4 bytes                                                                                                     |
+| Unsigned Integer          | `Types.IntegerType.unsigned()`                                           | `integer unsigned`                                                                                                                   | Unsigned Integer type, indicates a unsigned numerical value of 4 bytes                                                                                                     |
 | Long                      | `Types.LongType.get()`                                                   | `long`                                                                                                                               | Long type, indicates a numerical value of 8 bytes                                                                                                                          |
-| Long(false)               | `Types.LongType.unsigned()`                                              | `long unsigned`                                                                                                                      | Unsigned Long type, indicates a unsigned numerical value of 8 bytes                                                                                                        |
+| Unsigned Long             | `Types.LongType.unsigned()`                                              | `long unsigned`                                                                                                                      | Unsigned Long type, indicates a unsigned numerical value of 8 bytes                                                                                                        |
 | Float                     | `Types.FloatType.get()`                                                  | `float`                                                                                                                              | Float type, indicates a single-precision floating point number                                                                                                             |
 | Double                    | `Types.DoubleType.get()`                                                 | `double`                                                                                                                             | Double type, indicates a double-precision floating point number                                                                                                            |
 | Decimal(precision, scale) | `Types.DecimalType.of(precision, scale)`                                 | `decimal(p, s)`                                                                                                                      | Decimal type, indicates a fixed-precision decimal number with the constraint that the precision must be in range `[1, 38]` and the scala must be in range `[0, precision]` |
@@ -737,7 +901,7 @@ The following types that Gravitino supports:
 | Union                     | `Types.UnionType.of([type1, type2, ...])`                                | `{"type": "union", "types": [type JSON, ...]}`                                                                                       | Union type, indicates a union of types                                                                                                                                     |
 | UUID                      | `Types.UUIDType.get()`                                                   | `uuid`                                                                                                                               | UUID type, indicates a universally unique identifier                                                                                                                       |
 
-The related java doc is [here](pathname:///docs/0.6.0-incubating/api/java/org/apache/gravitino/rel/types/Type.html).
+The related java doc is [here](pathname:///docs/0.7.0-incubating-SNAPSHOT/api/java/org/apache/gravitino/rel/types/Type.html).
 
 ##### External type
 
@@ -807,6 +971,7 @@ The following is a table of the column default value that Gravitino supports for
 | `hive`              | &#10008;                |
 | `lakehouse-iceberg` | &#10008;                |
 | `lakehouse-paimon`  | &#10008;                |
+| `lakehouse-hudi`    | &#10008;                |
 | `jdbc-mysql`        | &#10004;                |
 | `jdbc-postgresql`   | &#10004;                |
 
@@ -820,6 +985,7 @@ The following table shows the column auto-increment that Gravitino supports for 
 | `hive`              | &#10008;                                                                     |
 | `lakehouse-iceberg` | &#10008;                                                                     |
 | `lakehouse-paimon`  | &#10008;                                                                     |
+| `lakehouse-hudi`    | &#10008;                                                                     |
 | `jdbc-mysql`        | &#10004;([limitations](./jdbc-mysql-catalog.md#table-column-auto-increment)) |
 | `jdbc-postgresql`   | &#10004;                                                                     |
 
@@ -832,20 +998,21 @@ The following is the table property that Gravitino supports:
 | `hive`              | [Hive table property](./apache-hive-catalog.md#table-properties)           | [Hive type mapping](./apache-hive-catalog.md#table-column-types)           |
 | `lakehouse-iceberg` | [Iceberg table property](./lakehouse-iceberg-catalog.md#table-properties)  | [Iceberg type mapping](./lakehouse-iceberg-catalog.md#table-column-types)  |
 | `lakehouse-paimon`  | [Paimon table property](./lakehouse-paimon-catalog.md#table-properties)    | [Paimon type mapping](./lakehouse-paimon-catalog.md#table-column-types)    |
+| `lakehouse-hudi`    | [Hudi table property](./lakehouse-hudi-catalog.md#table-properties)        | [Hudi type mapping](./lakehouse-hudi-catalog.md#table-column-types)        |
 | `jdbc-mysql`        | [MySQL table property](./jdbc-mysql-catalog.md#table-properties)           | [MySQL type mapping](./jdbc-mysql-catalog.md#table-column-types)           |
 | `jdbc-postgresql`   | [PostgreSQL table property](./jdbc-postgresql-catalog.md#table-properties) | [PostgreSQL type mapping](./jdbc-postgresql-catalog.md#table-column-types) |
 | `doris`             | [Doris table property](./jdbc-doris-catalog.md#table-properties)           | [Doris type mapping](./jdbc-doris-catalog.md#table-column-types)           |
 
-#### Table partitioning, bucketing, sort ordering and indexes
+#### Table partitioning, distribution, sort ordering and indexes
 
 In addition to the basic settings, Gravitino supports the following features:
 
-| Feature             | Description                                                                                                                                                                                                                                                                                    | Java doc                                                                                                                 |
-|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| Table partitioning  | Equal to `PARTITION BY` in Apache Hive, It is a partitioning strategy that is used to split a table into parts based on partition keys. Some table engine may not support this feature                                                                                                         | [Partition](pathname:///docs/0.6.0-incubating/api/java/org/apache/gravitino/dto/rel/partitioning/Partitioning.html)             |
-| Table bucketing     | Equal to `CLUSTERED BY` in Apache Hive, Bucketing a.k.a (Clustering) is a technique to split the data into more manageable files/parts, (By specifying the number of buckets to create). The value of the bucketing column will be hashed by a user-defined number into buckets.               | [Distribution](pathname:///docs/0.6.0-incubating/api/java/org/apache/gravitino/rel/expressions/distributions/Distribution.html) |
-| Table sort ordering | Equal to `SORTED BY` in Apache Hive, sort ordering is a method to sort the data in specific ways such as by a column or a function, and then store table data. it will highly improve the query performance under certain scenarios.                                                           | [SortOrder](pathname:///docs/0.6.0-incubating/api/java/org/apache/gravitino/rel/expressions/sorts/SortOrder.html)               |
-| Table indexes       | Equal to `KEY/INDEX` in MySQL , unique key enforces uniqueness of values in one or more columns within a table. It ensures that no two rows have identical values in specified columns, thereby facilitating data integrity and enabling efficient data retrieval and manipulation operations. | [Index](pathname:///docs/0.6.0-incubating/api/java/org/apache/gravitino/rel/indexes/Index.html)                                 |
+| Feature             | Description                                                                                                                                                                                                                                                                                    | Java doc                                                                                                                        |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| Table partitioning  | Equal to `PARTITION BY` in Apache Hive, It is a partitioning strategy that is used to split a table into parts based on partition keys. Some table engine may not support this feature                                                                                                         | [Partition](pathname:///docs/0.7.0-incubating-SNAPSHOT/api/java/org/apache/gravitino/dto/rel/partitioning/Partitioning.html)             |
+| Table distribution  | Equal to `CLUSTERED BY` in Apache Hive, distribution a.k.a (Clustering) is a technique to split the data into more manageable files/parts, (By specifying the number of buckets to create). The value of the distribution column will be hashed by a user-defined number into buckets.         | [Distribution](pathname:///docs/0.7.0-incubating-SNAPSHOT/api/java/org/apache/gravitino/rel/expressions/distributions/Distribution.html) |
+| Table sort ordering | Equal to `SORTED BY` in Apache Hive, sort ordering is a method to sort the data in specific ways such as by a column or a function, and then store table data. it will highly improve the query performance under certain scenarios.                                                           | [SortOrder](pathname:///docs/0.7.0-incubating-SNAPSHOT/api/java/org/apache/gravitino/rel/expressions/sorts/SortOrder.html)               |
+| Table indexes       | Equal to `KEY/INDEX` in MySQL , unique key enforces uniqueness of values in one or more columns within a table. It ensures that no two rows have identical values in specified columns, thereby facilitating data integrity and enabling efficient data retrieval and manipulation operations. | [Index](pathname:///docs/0.7.0-incubating-SNAPSHOT/api/java/org/apache/gravitino/rel/indexes/Index.html)                                 |
 
 For more information, please see the related document on [partitioning, bucketing, sorting, and indexes](table-partitioning-bucketing-sort-order-indexes.md).
 

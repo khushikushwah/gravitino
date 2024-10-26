@@ -31,24 +31,27 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import org.apache.gravitino.iceberg.service.IcebergRestUtils;
-import org.apache.gravitino.iceberg.service.IcebergTableOpsManager;
+import org.apache.gravitino.iceberg.service.dispatcher.IcebergTableOperationDispatcher;
 import org.apache.gravitino.metrics.MetricNames;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Path("/v1/{prefix:([^/]*/)?}tables/rename")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class IcebergTableRenameOperations {
+  private static final Logger LOG = LoggerFactory.getLogger(IcebergTableOperations.class);
 
   @SuppressWarnings("UnusedVariable")
   @Context
   private HttpServletRequest httpRequest;
 
-  private IcebergTableOpsManager icebergTableOpsManager;
+  private IcebergTableOperationDispatcher tableOperationDispatcher;
 
   @Inject
-  public IcebergTableRenameOperations(IcebergTableOpsManager icebergTableOpsManager) {
-    this.icebergTableOpsManager = icebergTableOpsManager;
+  public IcebergTableRenameOperations(IcebergTableOperationDispatcher tableOperationDispatcher) {
+    this.tableOperationDispatcher = tableOperationDispatcher;
   }
 
   @POST
@@ -57,7 +60,13 @@ public class IcebergTableRenameOperations {
   @ResponseMetered(name = "rename-table", absolute = true)
   public Response renameTable(
       @PathParam("prefix") String prefix, RenameTableRequest renameTableRequest) {
-    icebergTableOpsManager.getOps(prefix).renameTable(renameTableRequest);
+    String catalogName = IcebergRestUtils.getCatalogName(prefix);
+    LOG.info(
+        "Rename Iceberg tables, catalog: {}, source: {}, destination: {}.",
+        catalogName,
+        renameTableRequest.source(),
+        renameTableRequest.destination());
+    tableOperationDispatcher.renameTable(catalogName, renameTableRequest);
     return IcebergRestUtils.okWithoutContent();
   }
 }

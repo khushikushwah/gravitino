@@ -95,23 +95,23 @@ SELECT * FROM employee FOR SYSTEM_TIME AS OF '2024-05-27 01:01:00';
 DESC EXTENDED employee;
 ```
 
-For more details about `CALL`, please refer to the [Spark Procedures description](https://iceberg.apache.org/docs/1.5.2/spark-procedures/#spark-procedures) in Iceberg official document. 
+For more details about `CALL`, please refer to the [Spark Procedures description](https://iceberg.apache.org/docs/1.5.2/spark-procedures/#spark-procedures) in Iceberg official document.
 
 ## Catalog properties
 
 Gravitino spark connector will transform below property names which are defined in catalog properties to Spark Iceberg connector configuration.
 
-| Gravitino catalog property name | Spark Iceberg connector configuration | Description                                                                                                                                                                                                         | Since Version |
-|---------------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `catalog-backend`               | `type`                                | Catalog backend type                                                                                                                                                                                                | 0.5.0         |
-| `uri`                           | `uri`                                 | Catalog backend uri                                                                                                                                                                                                 | 0.5.0         |
-| `warehouse`                     | `warehouse`                           | Catalog backend warehouse                                                                                                                                                                                           | 0.5.0         |
-| `jdbc-user`                     | `jdbc.user`                           | JDBC user name                                                                                                                                                                                                      | 0.5.0         |
-| `jdbc-password`                 | `jdbc.password`                       | JDBC password                                                                                                                                                                                                       | 0.5.0         |
-| `io-impl`                       | `io-impl`                             | The io implementation for `FileIO` in Iceberg.                                                                                                                                                                      | 0.6.0         |
-| `s3-endpoint`                   | `s3.endpoint`                         | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | 0.6.0         | 
-| `s3-region`                     | `client.region`                       | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | 0.6.0         |
-| `oss-endpoint`                  | `oss.endpoint`                        | The endpoint of Aliyun OSS service.                                                                                                                                                                                 | 0.7.0         |
+| Gravitino catalog property name | Spark Iceberg connector configuration | Description                                                                                                                                                                                                         | Since Version    |
+|---------------------------------|---------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| `catalog-backend`               | `type`                                | Catalog backend type                                                                                                                                                                                                | 0.5.0            |
+| `uri`                           | `uri`                                 | Catalog backend uri                                                                                                                                                                                                 | 0.5.0            |
+| `warehouse`                     | `warehouse`                           | Catalog backend warehouse                                                                                                                                                                                           | 0.5.0            |
+| `jdbc-user`                     | `jdbc.user`                           | JDBC user name                                                                                                                                                                                                      | 0.5.0            |
+| `jdbc-password`                 | `jdbc.password`                       | JDBC password                                                                                                                                                                                                       | 0.5.0            |
+| `io-impl`                       | `io-impl`                             | The io implementation for `FileIO` in Iceberg.                                                                                                                                                                      | 0.6.0-incubating |
+| `s3-endpoint`                   | `s3.endpoint`                         | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | 0.6.0-incubating | 
+| `s3-region`                     | `client.region`                       | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | 0.6.0-incubating |
+| `oss-endpoint`                  | `oss.endpoint`                        | The endpoint of Aliyun OSS service.                                                                                                                                                                                 | 0.7.0-incubating |
 
 Gravitino catalog property names with the prefix `spark.bypass.` are passed to Spark Iceberg connector. For example, using `spark.bypass.clients` to pass the `clients` to the Spark Iceberg connector.
 
@@ -128,3 +128,11 @@ You need to add s3 secret to the Spark configuration using `spark.sql.catalog.${
 ### OSS
 
 You need to add OSS secret key to the Spark configuration using `spark.sql.catalog.${iceberg_catalog_name}.client.access-key-id` and `spark.sql.catalog.${iceberg_catalog_name}.client.access-key-secret`. Additionally, download the [Aliyun OSS SDK](https://gosspublic.alicdn.com/sdks/java/aliyun_java_sdk_3.10.2.zip) and copy `aliyun-sdk-oss-3.10.2.jar`, `hamcrest-core-1.1.jar`, `jdom2-2.0.6.jar` in the classpath of Spark.
+
+### GCS
+
+No extra configuration is needed. Please make sure the credential file is accessible by Spark, like using `export GOOGLE_APPLICATION_CREDENTIALS=/xx/application_default_credentials.json`, and download [Iceberg gcp bundle](https://mvnrepository.com/artifact/org.apache.iceberg/iceberg-gcp-bundle) and place it to the classpath of Spark.
+
+### Other storage
+
+You may need to add custom configurations with the format `spark.sql.catalog.${iceberg_catalog_name}.{configuration_key}`. Additionally, place corresponding jars which implement `FileIO` in the classpath of Spark.

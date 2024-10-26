@@ -25,14 +25,18 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.gravitino.authorization.Role;
+import org.apache.gravitino.authorization.ranger.RangerAuthorizationHivePlugin;
 import org.apache.gravitino.authorization.ranger.RangerAuthorizationPlugin;
 import org.apache.gravitino.authorization.ranger.RangerHelper;
+import org.apache.gravitino.authorization.ranger.RangerPrivileges;
+import org.apache.gravitino.authorization.ranger.RangerSecurableObject;
 import org.apache.gravitino.authorization.ranger.reference.RangerDefines;
+import org.apache.gravitino.connector.AuthorizationPropertiesMeta;
 import org.apache.gravitino.integration.test.container.ContainerSuite;
 import org.apache.gravitino.integration.test.container.HiveContainer;
+import org.apache.gravitino.integration.test.container.RangerContainer;
 import org.apache.gravitino.integration.test.container.TrinoContainer;
 import org.apache.ranger.RangerClient;
 import org.apache.ranger.RangerServiceException;
@@ -54,12 +58,56 @@ public class RangerITEnv {
   protected static final String RANGER_HDFS_REPO_NAME = "hdfsDev";
   private static final String RANGER_HDFS_TYPE = "hdfs";
   protected static RangerClient rangerClient;
+  protected static final String HADOOP_USER_NAME = "gravitino";
   private static volatile boolean initRangerService = false;
   private static final ContainerSuite containerSuite = ContainerSuite.getInstance();
 
-  public static void setup() {
+  // Hive resource database name
+  public static final String RESOURCE_DATABASE = "database";
+  // Hive resource table name
+  public static final String RESOURCE_TABLE = "table";
+  // Hive resource column name
+  public static final String RESOURCE_COLUMN = "column";
+  // HDFS resource path name
+  public static final String RESOURCE_PATH = "path";
+  public static final String SEARCH_FILTER_DATABASE =
+      SearchFilter.RESOURCE_PREFIX + RESOURCE_DATABASE;
+  // Search filter prefix table constants
+  public static final String SEARCH_FILTER_TABLE = SearchFilter.RESOURCE_PREFIX + RESOURCE_TABLE;
+  // Search filter prefix column constants
+  public static final String SEARCH_FILTER_COLUMN = SearchFilter.RESOURCE_PREFIX + RESOURCE_COLUMN;
+  // Search filter prefix file path constants
+  public static final String SEARCH_FILTER_PATH = SearchFilter.RESOURCE_PREFIX + RESOURCE_PATH;
+  public static RangerAuthorizationPlugin rangerAuthHivePlugin;
+  protected static RangerHelper rangerHelper;
+
+  public static void init() {
     containerSuite.startRangerContainer();
     rangerClient = containerSuite.getRangerContainer().rangerClient;
+
+    rangerAuthHivePlugin =
+        RangerAuthorizationHivePlugin.getInstance(
+            ImmutableMap.of(
+                AuthorizationPropertiesMeta.RANGER_ADMIN_URL,
+                String.format(
+                    "http://%s:%d",
+                    containerSuite.getRangerContainer().getContainerIpAddress(),
+                    RangerContainer.RANGER_SERVER_PORT),
+                AuthorizationPropertiesMeta.RANGER_AUTH_TYPE,
+                RangerContainer.authType,
+                AuthorizationPropertiesMeta.RANGER_USERNAME,
+                RangerContainer.rangerUserName,
+                AuthorizationPropertiesMeta.RANGER_PASSWORD,
+                RangerContainer.rangerPassword,
+                AuthorizationPropertiesMeta.RANGER_SERVICE_NAME,
+                RangerITEnv.RANGER_HIVE_REPO_NAME));
+    rangerHelper =
+        new RangerHelper(
+            rangerClient,
+            RangerContainer.rangerUserName,
+            RangerITEnv.RANGER_HIVE_REPO_NAME,
+            rangerAuthHivePlugin.ownerMappingRule(),
+            rangerAuthHivePlugin.policyResourceDefinesRule());
 
     if (!initRangerService) {
       synchronized (RangerITEnv.class) {
@@ -88,11 +136,30 @@ public class RangerITEnv {
     }
   }
 
+  static void startHiveRangerContainer() {
+    containerSuite.startHiveRangerContainer(
+        new HashMap<>(
+            ImmutableMap.of(
+                HiveContainer.HIVE_RUNTIME_VERSION,
+                HiveContainer.HIVE3,
+                RangerContainer.DOCKER_ENV_RANGER_SERVER_URL,
+                String.format(
+                    "http://%s:%d",
+                    containerSuite.getRangerContainer().getContainerIpAddress(),
+                    RangerContainer.RANGER_SERVER_PORT),
+                RangerContainer.DOCKER_ENV_RANGER_HIVE_REPOSITORY_NAME,
+                RangerITEnv.RANGER_HIVE_REPO_NAME,
+                RangerContainer.DOCKER_ENV_RANGER_HDFS_REPOSITORY_NAME,
+                RangerITEnv.RANGER_HDFS_REPO_NAME,
+                HiveContainer.HADOOP_USER_NAME,
+                HADOOP_USER_NAME)));
+  }
+
   /** Currently we only test Ranger Hive, So wo Allow anyone to visit HDFS */
   static void allowAnyoneAccessHDFS() {
     String policyName = currentFunName();
     try {
-      if (null != rangerClient.getPolicy(RangerDefines.SERVICE_TYPE_HDFS, policyName)) {
+      if (null != rangerClient.getPolicy(RANGER_HDFS_REPO_NAME, policyName)) {
         return;
       }
     } catch (RangerServiceException e) {
@@ -101,16 +168,19 @@ public class RangerITEnv {
     }
 
     Map<String, RangerPolicy.RangerPolicyResource> policyResourceMap =
-        ImmutableMap.of(RangerDefines.RESOURCE_PATH, new RangerPolicy.RangerPolicyResource("/*"));
+        ImmutableMap.of("path", new RangerPolicy.RangerPolicyResource("/*"));
     RangerPolicy.RangerPolicyItem policyItem = new RangerPolicy.RangerPolicyItem();
     policyItem.setUsers(Arrays.asList(RangerDefines.CURRENT_USER));
     policyItem.setAccesses(
         Arrays.asList(
-            new RangerPolicy.RangerPolicyItemAccess(RangerDefines.ACCESS_TYPE_HDFS_READ),
-            new RangerPolicy.RangerPolicyItemAccess(RangerDefines.ACCESS_TYPE_HDFS_WRITE),
-            new RangerPolicy.RangerPolicyItemAccess(RangerDefines.ACCESS_TYPE_HDFS_EXECUTE)));
+            new RangerPolicy.RangerPolicyItemAccess(
+                RangerPrivileges.RangerHdfsPrivilege.READ.toString()),
+            new RangerPolicy.RangerPolicyItemAccess(
+                RangerPrivileges.RangerHdfsPrivilege.WRITE.toString()),
+            new RangerPolicy.RangerPolicyItemAccess(
+                RangerPrivileges.RangerHdfsPrivilege.EXECUTE.toString())));
     updateOrCreateRangerPolicy(
-        RangerDefines.SERVICE_TYPE_HDFS,
+        RANGER_HDFS_TYPE,
         RANGER_HDFS_REPO_NAME,
         policyName,
         policyResourceMap,
@@ -124,7 +194,7 @@ public class RangerITEnv {
   static void allowAnyoneAccessInformationSchema() {
     String policyName = currentFunName();
     try {
-      if (null != rangerClient.getPolicy(RangerDefines.SERVICE_TYPE_HIVE, policyName)) {
+      if (null != rangerClient.getPolicy(RANGER_HIVE_REPO_NAME, policyName)) {
         return;
       }
     } catch (RangerServiceException e) {
@@ -134,19 +204,20 @@ public class RangerITEnv {
 
     Map<String, RangerPolicy.RangerPolicyResource> policyResourceMap =
         ImmutableMap.of(
-            RangerDefines.RESOURCE_DATABASE,
+            "database",
             new RangerPolicy.RangerPolicyResource("information_schema"),
-            RangerDefines.RESOURCE_TABLE,
+            "table",
             new RangerPolicy.RangerPolicyResource("*"),
-            RangerDefines.RESOURCE_COLUMN,
+            "column",
             new RangerPolicy.RangerPolicyResource("*"));
     RangerPolicy.RangerPolicyItem policyItem = new RangerPolicy.RangerPolicyItem();
     policyItem.setGroups(Arrays.asList(RangerDefines.PUBLIC_GROUP));
     policyItem.setAccesses(
         Arrays.asList(
-            new RangerPolicy.RangerPolicyItemAccess(RangerDefines.ACCESS_TYPE_HIVE_SELECT)));
+            new RangerPolicy.RangerPolicyItemAccess(
+                RangerPrivileges.RangerHivePrivilege.SELECT.toString())));
     updateOrCreateRangerPolicy(
-        RangerDefines.SERVICE_TYPE_HIVE,
+        RANGER_HIVE_TYPE,
         RANGER_HIVE_REPO_NAME,
         policyName,
         policyResourceMap,
@@ -176,7 +247,7 @@ public class RangerITEnv {
       Assertions.assertNotNull(createdService);
 
       Map<String, String> filter =
-          ImmutableMap.of(RangerDefines.SEARCH_FILTER_SERVICE_NAME, RANGER_TRINO_REPO_NAME);
+          ImmutableMap.of(SearchFilter.SERVICE_NAME, RANGER_TRINO_REPO_NAME);
       List<RangerService> services = rangerClient.findServices(filter);
       Assertions.assertEquals(RANGER_TRINO_TYPE, services.get(0).getType());
       Assertions.assertEquals(RANGER_TRINO_REPO_NAME, services.get(0).getName());
@@ -223,7 +294,7 @@ public class RangerITEnv {
       Assertions.assertNotNull(createdService);
 
       Map<String, String> filter =
-          ImmutableMap.of(RangerDefines.SEARCH_FILTER_SERVICE_NAME, RANGER_HIVE_REPO_NAME);
+          ImmutableMap.of(SearchFilter.SERVICE_NAME, RANGER_HIVE_REPO_NAME);
       List<RangerService> services = rangerClient.findServices(filter);
       Assertions.assertEquals(RANGER_HIVE_TYPE, services.get(0).getType());
       Assertions.assertEquals(RANGER_HIVE_REPO_NAME, services.get(0).getName());
@@ -280,7 +351,7 @@ public class RangerITEnv {
       Assertions.assertNotNull(createdService);
 
       Map<String, String> filter =
-          ImmutableMap.of(RangerDefines.SEARCH_FILTER_SERVICE_NAME, RANGER_HDFS_REPO_NAME);
+          ImmutableMap.of(SearchFilter.SERVICE_NAME, RANGER_HDFS_REPO_NAME);
       List<RangerService> services = rangerClient.findServices(filter);
       Assertions.assertEquals(RANGER_HDFS_TYPE, services.get(0).getType());
       Assertions.assertEquals(RANGER_HDFS_REPO_NAME, services.get(0).getName());
@@ -357,42 +428,42 @@ public class RangerITEnv {
     role.securableObjects()
         .forEach(
             securableObject -> {
-              RangerPolicy policy;
-              try {
-                policy =
-                    RangerITEnv.rangerClient.getPolicy(
-                        RangerITEnv.RANGER_HIVE_REPO_NAME, securableObject.fullName());
-                LOG.info("policy: " + policy.toString());
-              } catch (RangerServiceException e) {
-                LOG.error("Failed to get policy: " + securableObject.fullName());
-                throw new RuntimeException(e);
-              }
+              List<RangerSecurableObject> rangerSecurableObjects =
+                  rangerAuthPlugin.translatePrivilege(securableObject);
 
-              securableObject
-                  .privileges()
-                  .forEach(
-                      gravitinoPrivilege -> {
-                        Set<String> mappedPrivileges =
-                            rangerAuthPlugin.translatePrivilege(gravitinoPrivilege.name());
-
-                        boolean match =
-                            policy.getPolicyItems().stream()
-                                .filter(
-                                    policyItem -> {
-                                      // Filter Ranger policy item by Gravitino privilege
-                                      return policyItem.getAccesses().stream()
-                                          .anyMatch(
-                                              access -> {
-                                                return mappedPrivileges.contains(access.getType());
-                                              });
-                                    })
-                                .allMatch(
-                                    policyItem -> {
-                                      // Verify role name in Ranger policy item
-                                      return policyItem.getRoles().contains(role.name());
-                                    });
-                        Assertions.assertTrue(match);
-                      });
+              rangerSecurableObjects.forEach(
+                  rangerSecurableObject -> {
+                    RangerPolicy policy;
+                    try {
+                      policy =
+                          RangerITEnv.rangerClient.getPolicy(
+                              RangerITEnv.RANGER_HIVE_REPO_NAME, rangerSecurableObject.fullName());
+                      LOG.info("policy: " + policy.toString());
+                    } catch (RangerServiceException e) {
+                      LOG.error("Failed to get policy: " + securableObject.fullName());
+                      throw new RuntimeException(e);
+                    }
+                    boolean match =
+                        policy.getPolicyItems().stream()
+                            .filter(
+                                policyItem -> {
+                                  // Filter Ranger policy item by Gravitino privilege
+                                  return policyItem.getAccesses().stream()
+                                      .anyMatch(
+                                          access -> {
+                                            return rangerSecurableObject
+                                                .privileges()
+                                                .contains(
+                                                    RangerPrivileges.valueOf(access.getType()));
+                                          });
+                                })
+                            .allMatch(
+                                policyItem -> {
+                                  // Verify role name in Ranger policy item
+                                  return policyItem.getRoles().contains(role.name());
+                                });
+                    Assertions.assertTrue(match);
+                  });
             });
   }
 
@@ -436,26 +507,26 @@ public class RangerITEnv {
 
     Map<String, String> resourceFilter = new HashMap<>(); // use to match the precise policy
     Map<String, String> policyFilter = new HashMap<>();
-    policyFilter.put(RangerDefines.SEARCH_FILTER_SERVICE_NAME, serviceName);
+    policyFilter.put(SearchFilter.SERVICE_NAME, serviceName);
     policyFilter.put(SearchFilter.POLICY_LABELS_PARTIAL, RangerHelper.MANAGED_BY_GRAVITINO);
     final int[] index = {0};
     policyResourceMap.forEach(
         (k, v) -> {
           if (type.equals(RANGER_HIVE_TYPE)) {
             if (index[0] == 0) {
-              policyFilter.put(RangerDefines.SEARCH_FILTER_DATABASE, v.getValues().get(0));
-              resourceFilter.put(RangerDefines.RESOURCE_DATABASE, v.getValues().get(0));
+              policyFilter.put(SEARCH_FILTER_DATABASE, v.getValues().get(0));
+              resourceFilter.put(RESOURCE_DATABASE, v.getValues().get(0));
             } else if (index[0] == 1) {
-              policyFilter.put(RangerDefines.SEARCH_FILTER_TABLE, v.getValues().get(0));
-              resourceFilter.put(RangerDefines.RESOURCE_TABLE, v.getValues().get(0));
+              policyFilter.put(SEARCH_FILTER_TABLE, v.getValues().get(0));
+              resourceFilter.put(RESOURCE_TABLE, v.getValues().get(0));
             } else if (index[0] == 2) {
-              policyFilter.put(RangerDefines.SEARCH_FILTER_COLUMN, v.getValues().get(0));
-              resourceFilter.put(RangerDefines.RESOURCE_TABLE, v.getValues().get(0));
+              policyFilter.put(SEARCH_FILTER_COLUMN, v.getValues().get(0));
+              resourceFilter.put(RESOURCE_TABLE, v.getValues().get(0));
             }
             index[0]++;
           } else if (type.equals(RANGER_HDFS_TYPE)) {
-            policyFilter.put(RangerDefines.SEARCH_FILTER_PATH, v.getValues().get(0));
-            resourceFilter.put(RangerDefines.RESOURCE_PATH, v.getValues().get(0));
+            policyFilter.put(SEARCH_FILTER_PATH, v.getValues().get(0));
+            resourceFilter.put(RESOURCE_PATH, v.getValues().get(0));
           }
         });
     try {
@@ -512,8 +583,7 @@ public class RangerITEnv {
   protected static void cleanAllPolicy(String serviceName) {
     try {
       List<RangerPolicy> policies =
-          rangerClient.findPolicies(
-              ImmutableMap.of(RangerDefines.SEARCH_FILTER_SERVICE_NAME, serviceName));
+          rangerClient.findPolicies(ImmutableMap.of(SearchFilter.SERVICE_NAME, serviceName));
       for (RangerPolicy policy : policies) {
         rangerClient.deletePolicy(policy.getId());
       }

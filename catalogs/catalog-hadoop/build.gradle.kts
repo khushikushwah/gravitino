@@ -36,6 +36,8 @@ dependencies {
     exclude(group = "*")
   }
 
+  compileOnly(libs.guava)
+
   implementation(libs.hadoop3.common) {
     exclude("com.sun.jersey")
     exclude("javax.servlet", "servlet-api")
@@ -71,6 +73,9 @@ dependencies {
   testImplementation(project(":integration-test-common", "testArtifacts"))
   testImplementation(project(":server"))
   testImplementation(project(":server-common"))
+  testImplementation(project(":bundles:aws-bundle"))
+  testImplementation(project(":bundles:gcp-bundle"))
+  testImplementation(project(":bundles:aliyun-bundle"))
 
   testImplementation(libs.minikdc)
   testImplementation(libs.hadoop3.minicluster)
@@ -79,10 +84,12 @@ dependencies {
   testImplementation(libs.mockito.core)
   testImplementation(libs.mockito.inline)
   testImplementation(libs.mysql.driver)
+  testImplementation(libs.postgresql.driver)
   testImplementation(libs.junit.jupiter.api)
   testImplementation(libs.junit.jupiter.params)
   testImplementation(libs.testcontainers)
   testImplementation(libs.testcontainers.mysql)
+  testImplementation(libs.hadoop3.gcs)
 
   testRuntimeOnly(libs.junit.jupiter.engine)
 }
@@ -148,19 +155,18 @@ tasks.test {
     }
   }
 
-  val skipUTs = project.hasProperty("skipTests")
-  if (skipUTs) {
-    // Only run integration tests
-    include("**/integration/**")
-  }
-
   val skipITs = project.hasProperty("skipITs")
   if (skipITs) {
     // Exclude integration tests
-    exclude("**/integration/**")
+    exclude("**/integration/test/**")
   } else {
     dependsOn(tasks.jar)
   }
+
+  // this task depends on :bundles:aws-bundle:jar
+  dependsOn(":bundles:aws-bundle:jar")
+  dependsOn(":bundles:aliyun-bundle:jar")
+  dependsOn(":bundles:gcp-bundle:jar")
 }
 
 tasks.getByName("generateMetadataFileForMavenJavaPublication") {
