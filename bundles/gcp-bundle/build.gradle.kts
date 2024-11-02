@@ -33,7 +33,12 @@ dependencies {
   compileOnly(libs.hadoop3.common)
 
   implementation(libs.commons.lang3)
+  // runtime used
+  implementation(libs.commons.logging)
   implementation(libs.hadoop3.gcs)
+  implementation(project(":catalogs:catalog-common")) {
+    exclude("*")
+  }
   implementation(libs.google.auth.http)
   implementation(libs.google.auth.credentials)
 }
@@ -47,6 +52,7 @@ tasks.withType(ShadowJar::class.java) {
   relocate("org.apache.httpcomponents", "org.apache.gravitino.shaded.org.apache.httpcomponents")
   relocate("org.apache.commons", "org.apache.gravitino.shaded.org.apache.commons")
   relocate("com.google", "org.apache.gravitino.shaded.com.google")
+  relocate("com.fasterxml", "org.apache.gravitino.shaded.com.fasterxml")
 }
 
 tasks.jar {

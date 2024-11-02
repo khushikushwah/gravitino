@@ -17,7 +17,9 @@ The Apache Gravitino Iceberg REST Server follows the [Apache Iceberg REST API sp
   - multi table transaction
   - pagination
 - Works as a catalog proxy, supporting `Hive` and `JDBC` as catalog backend.
+- Supports credential vending for `S3` and `GCS`.
 - Supports different storages like `S3`, `HDFS`, `OSS`, `GCS` and provides the capability to support other storages.
+- Supports event listener.
 - Supports OAuth2 and HTTPS.
 - Provides a pluggable metrics store interface to store and delete Iceberg metrics.
 
@@ -86,31 +88,38 @@ Gravitino Iceberg REST server supports OAuth2 and HTTPS, please refer to [Securi
 For JDBC backend, you can use the `gravitino.iceberg-rest.jdbc.user` and `gravitino.iceberg-rest.jdbc.password` to authenticate the JDBC connection. For Hive backend, you can use the `gravitino.iceberg-rest.authentication.type` to specify the authentication type, and use the `gravitino.iceberg-rest.authentication.kerberos.principal` and `gravitino.iceberg-rest.authentication.kerberos.keytab-uri` to authenticate the Kerberos connection.
 The detailed configuration items are as follows:
 
-| Configuration item                                                        | Description                                                                                                                                                                                                                                           | Default value | Required                                                                           | Since Version    |
-|---------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|------------------------------------------------------------------------------------|------------------|
-| `gravitino.iceberg-rest.authentication.type`                              | The type of authentication for Iceberg rest catalog backend. This configuration only applicable for for Hive backend, and only supports `Kerberos`, `simple` currently. As for JDBC backend, only username/password authentication was supported now. | `simple`      | No                                                                                 | 0.7.0-incubating |
-| `gravitino.iceberg-rest.authentication.impersonation-enable`              | Whether to enable impersonation for the Iceberg catalog                                                                                                                                                                                               | `false`       | No                                                                                 | 0.7.0-incubating |
-| `gravitino.iceberg-rest.authentication.kerberos.principal`                | The principal of the Kerberos authentication                                                                                                                                                                                                          | (none)        | required if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos. | 0.7.0-incubating |
-| `gravitino.iceberg-rest.authentication.kerberos.keytab-uri`               | The URI of The keytab for the Kerberos authentication.                                                                                                                                                                                                | (none)        | required if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos. | 0.7.0-incubating |
-| `gravitino.iceberg-rest.authentication.kerberos.check-interval-sec`       | The check interval of Kerberos credential for Iceberg catalog.                                                                                                                                                                                        | 60            | No                                                                                 | 0.7.0-incubating |
-| `gravitino.iceberg-rest.authentication.kerberos.keytab-fetch-timeout-sec` | The fetch timeout of retrieving Kerberos keytab from `authentication.kerberos.keytab-uri`.                                                                                                                                                            | 60            | No                                                                                 | 0.7.0-incubating |
+| Configuration item                                                        | Description                                                                                                                                                                                                                                            | Default value | Required                                                                                                                                                             | Since Version    |
+|---------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|
+| `gravitino.iceberg-rest.authentication.type`                              | The type of authentication for Iceberg rest catalog backend. This configuration only applicable for for Hive backend, and only supports `Kerberos`, `simple` currently. As for JDBC backend, only username/password authentication was supported now.  | `simple`      | No                                                                                                                                                                   | 0.7.0-incubating |
+| `gravitino.iceberg-rest.authentication.impersonation-enable`              | Whether to enable impersonation for the Iceberg catalog                                                                                                                                                                                                | `false`       | No                                                                                                                                                                   | 0.7.0-incubating |
+| `gravitino.iceberg-rest.hive.metastore.sasl.enabled`                      | Whether to enable SASL authentication protocol when connect to Kerberos Hive metastore.                                                                                                                                                                | `false`       | No, This value should be true in most case(Some will use SSL protocol, but it rather rare) if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos. | 0.7.0-incubating |
+| `gravitino.iceberg-rest.authentication.kerberos.principal`                | The principal of the Kerberos authentication                                                                                                                                                                                                           | (none)        | required if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos.                                                                                   | 0.7.0-incubating |
+| `gravitino.iceberg-rest.authentication.kerberos.keytab-uri`               | The URI of The keytab for the Kerberos authentication.                                                                                                                                                                                                 | (none)        | required if the value of `gravitino.iceberg-rest.authentication.type` is Kerberos.                                                                                   | 0.7.0-incubating |
+| `gravitino.iceberg-rest.authentication.kerberos.check-interval-sec`       | The check interval of Kerberos credential for Iceberg catalog.                                                                                                                                                                                         | 60            | No                                                                                                                                                                   | 0.7.0-incubating |
+| `gravitino.iceberg-rest.authentication.kerberos.keytab-fetch-timeout-sec` | The fetch timeout of retrieving Kerberos keytab from `authentication.kerberos.keytab-uri`.                                                                                                                                                             | 60            | No                                                                                                                                                                   | 0.7.0-incubating |
 
 
 ### Storage
 
 #### S3 configuration
 
-Gravitino Iceberg REST service supports using static access-key-id and secret-access-key to access S3 data.
+Gravitino Iceberg REST service supports using static S3 secret key or generating temporary token to access S3 data.
 
-| Configuration item                            | Description                                                                                                                                                                                                         | Default value | Required | Since Version    |
-|-----------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `gravitino.iceberg-rest.io-impl`              | The IO implementation for `FileIO` in Iceberg, use `org.apache.iceberg.aws.s3.S3FileIO` for S3.                                                                                                                     | (none)        | No       | 0.6.0-incubating |
-| `gravitino.iceberg-rest.s3-access-key-id`     | The static access key ID used to access S3 data.                                                                                                                                                                    | (none)        | No       | 0.6.0-incubating |
-| `gravitino.iceberg-rest.s3-secret-access-key` | The static secret access key used to access S3 data.                                                                                                                                                                | (none)        | No       | 0.6.0-incubating |
-| `gravitino.iceberg-rest.s3-endpoint`          | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | (none)        | No       | 0.6.0-incubating |
-| `gravitino.iceberg-rest.s3-region`            | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | (none)        | No       | 0.6.0-incubating |
+| Configuration item                                | Description                                                                                                                                                                                                         | Default value | Required                                           | Since Version    |
+|---------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------------------------------------------------|------------------|
+| `gravitino.iceberg-rest.io-impl`                  | The IO implementation for `FileIO` in Iceberg, use `org.apache.iceberg.aws.s3.S3FileIO` for S3.                                                                                                                     | (none)        | No                                                 | 0.6.0-incubating |
+| `gravitino.iceberg-rest.credential-provider-type` | Supports `s3-token` and `s3-secret-key` for S3. `s3-token` generates a temporary token according to the query data path while `s3-secret-key` using the s3 secret access key to access S3 data.                     | (none)        | No                                                 | 0.7.0-incubating |
+| `gravitino.iceberg-rest.s3-access-key-id`         | The static access key ID used to access S3 data.                                                                                                                                                                    | (none)        | No                                                 | 0.6.0-incubating |
+| `gravitino.iceberg-rest.s3-secret-access-key`     | The static secret access key used to access S3 data.                                                                                                                                                                | (none)        | No                                                 | 0.6.0-incubating |
+| `gravitino.iceberg-rest.s3-endpoint`              | An alternative endpoint of the S3 service, This could be used for S3FileIO with any s3-compatible object storage service that has a different endpoint, or access a private S3 endpoint in a virtual private cloud. | (none)        | No                                                 | 0.6.0-incubating |
+| `gravitino.iceberg-rest.s3-region`                | The region of the S3 service, like `us-west-2`.                                                                                                                                                                     | (none)        | No                                                 | 0.6.0-incubating |
+| `gravitino.iceberg-rest.s3-role-arn`              | The ARN of the role to access the S3 data.                                                                                                                                                                          | (none)        | Yes, when `credential-provider-type` is `s3-token` | 0.7.0-incubating |
+| `gravitino.iceberg-rest.s3-external-id`           | The S3 external id to generate token, only used when `credential-provider-type` is `s3-token`.                                                                                                                      | (none)        | No                                                 | 0.7.0-incubating |
+| `gravitino.iceberg-rest.s3-token-expire-in-secs`  | The S3 session token expire time in secs, it couldn't exceed the max session time of the assumed role, only used when `credential-provider-type` is `s3-token`.                                                     | 3600          | No                                                 | 0.7.0-incubating |
 
 For other Iceberg s3 properties not managed by Gravitino like `s3.sse.type`, you could config it directly by `gravitino.iceberg-rest.s3.sse.type`.
+
+If you set `credential-provider-type` explicitly, please downloading [Gravitino AWS bundle jar](https://mvnrepository.com/artifact/org.apache.gravitino/aws-bundle), and place it to the classpath of Iceberg REST server.
 
 :::info
 To configure the JDBC catalog backend, set the `gravitino.iceberg-rest.warehouse` parameter to `s3://{bucket_name}/${prefix_name}`. For the Hive catalog backend, set `gravitino.iceberg-rest.warehouse` to `s3a://{bucket_name}/${prefix_name}`. Additionally, download the [Iceberg AWS bundle](https://mvnrepository.com/artifact/org.apache.iceberg/iceberg-aws-bundle) and place it in the classpath of Iceberg REST server.
@@ -135,13 +144,17 @@ Please set the `gravitino.iceberg-rest.warehouse` parameter to `oss://{bucket_na
 
 #### GCS
 
-Supports using google credential file to access GCS data.
+Supports using static GCS credential file or generating GCS token to access GCS data.
 
-| Configuration item               | Description                                                                                        | Default value | Required | Since Version    |
-|----------------------------------|----------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `gravitino.iceberg-rest.io-impl` | The io implementation for `FileIO` in Iceberg, use `org.apache.iceberg.gcp.gcs.GCSFileIO` for GCS. | (none)        | No       | 0.6.0-incubating |
+| Configuration item                                | Description                                                                                        | Default value | Required | Since Version    |
+|---------------------------------------------------|----------------------------------------------------------------------------------------------------|---------------|----------|------------------|
+| `gravitino.iceberg-rest.io-impl`                  | The io implementation for `FileIO` in Iceberg, use `org.apache.iceberg.gcp.gcs.GCSFileIO` for GCS. | (none)        | No       | 0.6.0-incubating |
+| `gravitino.iceberg-rest.credential-provider-type` | Supports `gcs-token`, generates a temporary token according to the query data path.                | (none)        | No       | 0.7.0-incubating |
+| `gravitino.iceberg-rest.gcs-credential-file-path` | The location of GCS credential file, only used when `credential-provider-type` is `gcs-token`.     | (none)        | No       | 0.7.0-incubating |
 
 For other Iceberg GCS properties not managed by Gravitino like `gcs.project-id`, you could config it directly by `gravitino.iceberg-rest.gcs.project-id`.
+
+If you set `credential-provider-type` explicitly, please downloading [Gravitino GCP bundle jar](https://mvnrepository.com/artifact/org.apache.gravitino/gcp-bundle), and place it to the classpath of Iceberg REST server.
 
 Please make sure the credential file is accessible by Gravitino, like using `export GOOGLE_APPLICATION_CREDENTIALS=/xx/application_default_credentials.json` before Gravitino Iceberg REST server is started.
 
@@ -224,17 +237,17 @@ You could access the view interface if using JDBC backend and enable `jdbc.schem
 
 #### Multi catalog support
 
-The Gravitino Iceberg REST server supports multiple catalogs and offers a configuration-based catalog management system.
+The Gravitino Iceberg REST server supports multiple catalogs, and you could manage the catalog by different ways.
 
-| Configuration item                        | Description                                                                                                                                                                        | Default value           | Required | Since Version    |
-|-------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------|----------|------------------|
-| `gravitino.iceberg-rest.catalog-provider` | Catalog provider class name, you can develop a class that implements `IcebergTableOpsProvider` and add the corresponding jar file to the Iceberg REST service classpath directory. | `config-based-provider` | No       | 0.7.0-incubating |
+| Configuration item                               | Description                                                                                                                                                                                                                                                                                                                                      | Default value            | Required | Since Version    |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------|----------|------------------|
+| `gravitino.iceberg-rest.catalog-config-provider` | The className of catalog configuration provider, Gravitino provides build-in `static-config-provider` and `dynamic-config-provider`, you could also develop a custom class that implements `apache.gravitino.iceberg.service.provider.IcebergConfigProvider` and add the corresponding jar file to the Iceberg REST service classpath directory. | `static-config-provider` | No       | 0.7.0-incubating |
 
-##### Configuration based catalog provider
+##### Static catalog configuration provider
 
-When using a configuration based catalog provider, you can configure the default catalog with `gravitino.iceberg-rest.catalog.<param name>=<value>`. For specific catalogs, use the format `gravitino.iceberg-rest.catalog.<catalog name>.<param name>=<value>`.
+The static catalog configuration provider retrieves the catalog configuration from the configuration file of the Gravitino Iceberg REST server. You could configure the default catalog with `gravitino.iceberg-rest.catalog.<param name>=<value>`. For specific catalogs, use the format `gravitino.iceberg-rest.catalog.<catalog name>.<param name>=<value>`.
 
-For instance, you can configure three different catalogs, the default catalog and the specific `hive_backend` and `jdbc_backend` catalogs separately.
+For instance, you could configure three different catalogs, the default catalog and the specific `hive_backend` and `jdbc_backend` catalogs separately.
 
 ```text
 gravitino.iceberg-rest.catalog-backend = jdbc
@@ -269,19 +282,19 @@ You can access different catalogs by setting the `prefix` to the specific catalo
 ...
 ```
 
-##### Gravitino server based catalog provider
+##### Dynamic catalog configuration provider
 
-When using a Gravitino server based catalog provider, you can leverage Gravitino to support dynamic catalog management for the Iceberg REST server.
+The dynamic catalog configuration provider retrieves the catalog configuration from the Gravitino server.
 
-| Configuration item                                          | Description                                                                                                                                      | Default value | Required | Since Version    |
-|-------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
-| `gravitino.iceberg-rest.gravitino-uri`                      | The uri of Gravitino server address, only worked if `catalog-provider` is `gravitino-based-provider`.                                            | (none)        | No       | 0.7.0-incubating |
-| `gravitino.iceberg-rest.gravitino-metalake`                 | The metalake name that `gravitino-based-provider` used to request to Gravitino, only worked if `catalog-provider` is `gravitino-based-provider`. | (none)        | No       | 0.7.0-incubating |
-| `gravitino.iceberg-rest.catalog-cache-eviction-interval-ms` | Catalog cache eviction interval.                                                                                                                 | 3600000       | No       | 0.7.0-incubating |
+| Configuration item                                          | Description                                                                                                                                           | Default value | Required | Since Version    |
+|-------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|----------|------------------|
+| `gravitino.iceberg-rest.gravitino-uri`                      | The uri of Gravitino server address, only worked if `catalog-config-provider` is `dynamic-config-provider`.                                           | (none)        | No       | 0.7.0-incubating |
+| `gravitino.iceberg-rest.gravitino-metalake`                 | The metalake name that `dynamic-config-provider` used to request to Gravitino, only worked if `catalog-config-provider` is `dynamic-config-provider`. | (none)        | No       | 0.7.0-incubating |
+| `gravitino.iceberg-rest.catalog-cache-eviction-interval-ms` | Catalog cache eviction interval.                                                                                                                      | 3600000       | No       | 0.7.0-incubating |
 
 ```text
 gravitino.iceberg-rest.catalog-cache-eviction-interval-ms = 300000
-gravitino.iceberg-rest.catalog-provider = gravitino-based-provider
+gravitino.iceberg-rest.catalog-config-provider = dynamic-config-provider
 gravitino.iceberg-rest.gravitino-uri = http://127.0.0.1:8090
 gravitino.iceberg-rest.gravitino-metalake = test
 ```
@@ -298,6 +311,11 @@ The `clients` property for example:
 :::info
 `catalog-impl` has no effect.
 :::
+
+
+### Event listener
+
+Gravitino generates pre-event and post-event for table operations and provide a pluggable event listener to allow you to inject custom logic. For more details, please refer to [Event listener configuration](gravitino-server-config.md#event-listener-configuration).
 
 ### Apache Iceberg metrics store configuration
 
@@ -361,7 +379,7 @@ For example, we can configure Spark catalog options to use Gravitino Iceberg RES
 --conf spark.sql.catalog.rest.uri=http://127.0.0.1:9001/iceberg/
 ```
 
-You may need to adjust the Iceberg Spark runtime jar file name according to the real version number in your environment. If you want to access the data stored in cloud, you need to download corresponding jars (please refer to the cloud storage part) and place it in the classpath of Spark, no extra config is needed because related properties is transferred from Iceberg REST server to Iceberg REST client automatically.
+You may need to adjust the Iceberg Spark runtime jar file name according to the real version number in your environment. If you want to access the data stored in cloud, you need to download corresponding jars (please refer to the cloud storage part) and place it in the classpath of Spark. If you want to enable credential vending, please set `credential-provider-type` to a proper value in the server side, set `spark.sql.catalog.rest.header.X-Iceberg-Access-Delegation` = `vended-credentials` in the client side.
 
 For other storages not managed by Gravitino, the properties wouldn't transfer from the server to client automatically, if you want to pass custom properties to initialize `FileIO`, you could add it by `spark.sql.catalog.${iceberg_catalog_name}.${configuration_key}` = `{property_value}`.
 
@@ -382,13 +400,28 @@ SELECT * FROM dml.test;
 You could run Gravitino Iceberg REST server though docker container:
 
 ```shell
-docker run -d -p 9001:9001 apache/gravitino-iceberg-rest:0.6.0
+docker run -d -p 9001:9001 apache/gravitino-iceberg-rest:0.7.0-incubating
 ```
 
-Or build it manually to add custom logics:
+Gravitino Iceberg REST server in docker image could access local storage by default, you could set the following environment variables if the storage is cloud/remote storage like S3, please refer to [storage section](#storage) for more details.
+
+| Environment variables                | Configuration items                               | Since version     |
+|--------------------------------------|---------------------------------------------------|-------------------|
+| `GRAVITINO_IO_IMPL`                  | `gravitino.iceberg-rest.io-impl`                  | 0.7.0-incubating  |
+| `GRAVITINO_URI`                      | `gravitino.iceberg-rest.uri`                      | 0.7.0-incubating  |
+| `GRAVITINO_WAREHOUSE`                | `gravitino.iceberg-rest.warehouse`                | 0.7.0-incubating  |
+| `GRAVITINO_CREDENTIAL_PROVIDER_TYPE` | `gravitino.iceberg-rest.credential-provider-type` | 0.7.0-incubating  |
+| `GRAVITINO_GCS_CREDENTIAL_FILE_PATH` | `gravitino.iceberg-rest.gcs-credential-file-path` | 0.7.0-incubating  |
+| `GRAVITINO_S3_ACCESS_KEY`            | `gravitino.iceberg-rest.s3-access-key-id`         | 0.7.0-incubating  |
+| `GRAVITINO_S3_SECRET_KEY`            | `gravitino.iceberg-rest.s3-secret-access-key`     | 0.7.0-incubating  |
+| `GRAVITINO_S3_REGION`                | `gravitino.iceberg-rest.s3-region`                | 0.7.0-incubating  |
+| `GRAVITINO_S3_ROLE_ARN`              | `gravitino.iceberg-rest.s3-role-arn`              | 0.7.0-incubating  |
+| `GRAVITINO_S3_EXTERNAL_ID`           | `gravitino.iceberg-rest.s3-external-id`           | 0.7.0-incubating  |
+
+Or build it manually to add custom configuration or logics:
 
 ```shell
-sh ./dev/docker/build-docker.sh --platform linux/arm64 --type iceberg-rest-server --image apache/gravitino-iceberg-rest --tag 0.6.0
+sh ./dev/docker/build-docker.sh --platform linux/arm64 --type iceberg-rest-server --image apache/gravitino-iceberg-rest --tag 0.7.0-incubating
 ```
 
 You could try Spark with Gravitino REST catalog service in our [playground](./how-to-use-the-playground.md#using-apache-iceberg-rest-service).
